@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<!--
+  KAZAN 火山 — a volcano map game and field guide
+  This file is BUILT by tools/build.py from template.html + data/. Edit those, then rebuild.
+  Code: MIT License (see LICENSE). Volcano data and photos: Smithsonian Institution,
+  Global Volcanism Program, Volcanoes of the World. Map outlines: Natural Earth (public domain).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kazan 火山</title>
+<meta name="description" content="Find the world's volcanoes on a blank map, then learn about them in a field guide.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* Colors: a woodblock-print palette. Indigo (ai) sea, washi-paper land,
+   cinnabar (shu) for volcanoes and the seal, gold for the player's guess. */
+:root{
+  --paper:#f0efe9; --panel:#f7f6f1; --ink:#1c1d21; --ink-soft:#5c5e64; --rule:#d9d6cb;
+  --sea:#233f63; --sea-line:rgba(255,255,255,.08); --land:#e9e3d3; --land-edge:#a69c86; --border:#8f8672;
+  --shu:#c4362c; --shu-ink:#fff; --guess:#f0bd45; --good:#2e6b4c; --dot:#c4362c;
+  --mincho:"Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",Georgia,serif;
+  --sans:"Zen Kaku Gothic New",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#141619; --panel:#1b1e22; --ink:#ebe8e1; --ink-soft:#a3a5a8; --rule:#30343a;
+    --sea:#13243a; --sea-line:rgba(255,255,255,.06); --land:#2f332f; --land-edge:#4c524b; --border:#626a62;
+    --shu:#de5246; --shu-ink:#fff; --guess:#f3c75a; --good:#7cc59f; --dot:#ef6a5d;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#141619; --panel:#1b1e22; --ink:#ebe8e1; --ink-soft:#a3a5a8; --rule:#30343a;
+  --sea:#13243a; --sea-line:rgba(255,255,255,.06); --land:#2f332f; --land-edge:#4c524b; --border:#626a62;
+  --shu:#de5246; --shu-ink:#fff; --guess:#f3c75a; --good:#7cc59f; --dot:#ef6a5d;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.5;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit}
+a{color:inherit}
+#app{height:100%;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+
+/* header */
+header{display:flex;align-items:center;gap:.9rem;padding:.55rem 1rem;border-bottom:1px solid var(--rule);background:var(--paper);z-index:4}
+.seal{display:flex;flex-direction:column;align-items:center;flex:none;width:28px;background:var(--shu);color:var(--shu-ink);font-family:var(--mincho);font-weight:800;font-size:14px;line-height:1.05;padding:4px 0;border-radius:3px;box-shadow:inset 0 0 0 2px var(--shu),inset 0 0 0 3px rgba(255,255,255,.55);user-select:none}
+.word{font-family:var(--mincho);font-weight:700;font-size:1.35rem;letter-spacing:.02em}
+nav{display:flex;gap:.25rem;margin-left:.6rem}
+nav button{background:none;border:0;padding:.4rem .7rem;border-radius:999px;cursor:pointer;color:var(--ink-soft);font-weight:500}
+nav button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+nav button:focus-visible,.btn:focus-visible,.chip:focus-visible,.row:focus-visible,.mapbtn:focus-visible{outline:2px solid var(--shu);outline-offset:2px}
+.stats{display:flex;gap:1.3rem;margin-left:auto;font-size:.8rem;color:var(--ink-soft)}
+.stats b{display:block;color:var(--ink);font-size:1.1rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+#timer{height:3px;background:var(--rule)}
+#timerFill{height:100%;background:var(--shu);transform-origin:left;transform:scaleX(1)}
+
+/* map */
+main{position:relative;flex:1;min-height:0;display:flex}
+#stage{position:relative;flex:1;min-width:0;min-height:0;overflow:hidden}
+svg{display:block;width:100%;height:100%;touch-action:manipulation}
+svg.quiz{cursor:crosshair}
+.sphere{fill:var(--sea)}
+.grat{fill:none;stroke:var(--sea-line);stroke-width:.6}
+.land{fill:var(--land);stroke:none}
+.borders{fill:none;stroke:var(--border);stroke-width:.45;stroke-opacity:.75;vector-effect:non-scaling-stroke}
+.coast{fill:none;stroke:var(--land-edge);stroke-width:.6;vector-effect:non-scaling-stroke}
+.vdot{fill:var(--dot);fill-opacity:.38;stroke:none;cursor:pointer}
+.vdot.on{fill-opacity:1;stroke:var(--land);stroke-width:1;vector-effect:non-scaling-stroke}
+.vdot.sel{fill:var(--guess);fill-opacity:1;stroke:var(--ink);stroke-width:1.4}
+.track{fill:none;stroke:var(--guess);stroke-width:1.8;stroke-dasharray:5 4;vector-effect:non-scaling-stroke}
+.guessDot{fill:var(--guess);stroke:var(--sea);stroke-width:2}
+.trueDot{fill:var(--shu);stroke:#fff;stroke-width:2}
+.ring{fill:none;stroke:var(--shu);stroke-width:1.5}
+.lbl{font-family:var(--mincho);font-weight:700;font-size:15px;fill:#fff;paint-order:stroke;stroke:var(--sea);stroke-width:4px;stroke-linejoin:round;pointer-events:none}
+@media (prefers-reduced-motion:no-preference){ .ring{animation:pulse 1.4s ease-out} @keyframes pulse{from{r:3;opacity:1}to{opacity:.6}} }
+
+/* quiz prompt */
+#prompt{position:absolute;left:1rem;top:1rem;max-width:min(31rem,calc(100% - 2rem));background:var(--panel);border:1px solid var(--rule);border-left:4px solid var(--shu);padding:.75rem 1.05rem .85rem;pointer-events:none;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+#prompt .q{font-size:.8rem;color:var(--ink-soft)}
+#pName{font-family:var(--mincho);font-weight:800;font-size:clamp(1.55rem,4.2vw,2.4rem);line-height:1.1;margin-top:.1rem}
+#pWhere{font-size:.92rem;color:var(--ink-soft);margin-top:.15rem}
+#result{margin-top:.5rem;font-size:.95rem;font-variant-numeric:tabular-nums;min-height:1.4em}
+#result .pts{color:var(--good);font-weight:700}
+#result .miss{color:var(--shu);font-weight:700}
+#fact{font-size:.85rem;color:var(--ink-soft);margin-top:.15rem}
+#hint{position:absolute;right:1rem;bottom:1rem;font-size:.78rem;color:#fff;background:rgba(0,0,0,.35);padding:.3rem .6rem;border-radius:4px}
+
+/* overlay screens */
+.screen{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1rem;background:color-mix(in srgb,var(--sea) 35%,transparent);z-index:5;overflow:auto}
+.screen[hidden],[hidden]{display:none!important}
+.card{background:var(--panel);border:1px solid var(--rule);box-shadow:0 18px 50px rgba(0,0,0,.28);width:min(40rem,100%);max-height:100%;overflow:auto;display:flex}
+.kanji{display:flex;flex-direction:column;align-items:center;flex:none;font-family:var(--mincho);font-weight:800;font-size:clamp(4.2rem,11vw,7rem);line-height:1;color:var(--shu);padding:1.4rem .9rem 1.4rem 1.3rem;border-right:1px solid var(--rule);letter-spacing:.04em;user-select:none}
+.cardBody{padding:1.5rem 1.6rem 1.4rem;flex:1;min-width:0}
+.cardBody h1{font-family:var(--mincho);font-weight:800;font-size:clamp(2rem,6vw,2.7rem);line-height:1;margin:0}
+.cardBody .sub{font-family:var(--mincho);color:var(--ink-soft);margin:.35rem 0 1rem;font-size:1.02rem}
+.cardBody p{margin:.2rem 0 1.1rem;color:var(--ink-soft);max-width:60ch}
+.maps{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.mapbtn{all:unset;cursor:pointer;border:1px solid var(--rule);padding:.85rem .95rem;background:var(--paper);display:block}
+.mapbtn:hover{border-color:var(--ink)}
+.mapbtn .t{font-family:var(--mincho);font-weight:700;font-size:1.3rem;display:block;line-height:1.2}
+.mapbtn .s{font-size:.8rem;color:var(--ink-soft)}
+.textlink{background:none;border:0;padding:0;color:var(--shu);font-weight:500;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.credits{font-size:.72rem;color:var(--ink-soft);margin:1.1rem 0 0;line-height:1.5}
+.btn{cursor:pointer;background:var(--ink);color:var(--paper);border:0;padding:.65rem 1.1rem;margin:.4rem .5rem 0 0;font-weight:700}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule)}
+.final{font-family:var(--mincho);font-weight:800;font-size:3.4rem;line-height:1;margin:.25rem 0 .2rem;font-variant-numeric:tabular-nums}
+.new{color:var(--good);font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:.88rem;margin:1rem 0 .6rem;font-variant-numeric:tabular-nums}
+td{padding:.32rem 0;border-bottom:1px solid var(--rule);vertical-align:top}
+td:nth-child(2),td:nth-child(3){text-align:right;color:var(--ink-soft);white-space:nowrap;padding-left:.8rem}
+td:nth-child(3){color:var(--ink);font-weight:700}
+td .textlink{color:var(--ink);text-decoration-color:var(--rule);text-align:left}
+
+/* field guide panel */
+#guide{width:min(25rem,42vw);border-left:1px solid var(--rule);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+#guide .head{padding:1rem 1.1rem .7rem;border-bottom:1px solid var(--rule)}
+#guide h2{font-family:var(--mincho);font-weight:800;font-size:1.5rem;margin:0 0 .5rem;line-height:1.1}
+.search{width:100%;font:inherit;padding:.5rem .7rem;border:1px solid var(--rule);background:var(--paper);color:var(--ink)}
+.search:focus{outline:2px solid var(--shu);outline-offset:-1px}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.65rem}
+.chip{border:1px solid var(--rule);background:var(--paper);border-radius:999px;padding:.22rem .65rem;font-size:.8rem;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--shu);border-color:var(--shu);color:var(--shu-ink)}
+select{width:100%;margin-top:.6rem;font:inherit;padding:.45rem .6rem;border:1px solid var(--rule);background:var(--paper);color:var(--ink)}
+#gBody{overflow:auto;flex:1;min-height:0}
+.count{font-size:.8rem;color:var(--ink-soft);padding:.6rem 1.1rem .2rem}
+.row{all:unset;display:flex;gap:.6rem;align-items:baseline;width:100%;box-sizing:border-box;padding:.5rem 1.1rem;border-bottom:1px solid var(--rule);cursor:pointer}
+.row:hover{background:var(--paper)}
+.row .nm{font-weight:700;flex:1;min-width:0}
+.row .nm small{display:block;font-weight:400;color:var(--ink-soft);font-size:.78rem}
+.row .yr{font-variant-numeric:tabular-nums;color:var(--ink-soft);font-size:.85rem;white-space:nowrap}
+.tag{display:inline-block;font-size:.68rem;font-weight:700;color:var(--shu);border:1px solid currentColor;border-radius:3px;padding:0 .3rem;margin-left:.35rem;vertical-align:1px}
+.empty{padding:1.2rem 1.1rem;color:var(--ink-soft)}
+.empty p{margin:0 0 .7rem}
+.detail{padding:0 0 1.4rem}
+.detail .back{margin:.8rem 1.1rem .6rem}
+figure{margin:0;background:var(--paper)}
+figure img{display:block;width:100%;height:auto;max-height:15rem;object-fit:cover;background:var(--rule)}
+figcaption{font-size:.72rem;color:var(--ink-soft);padding:.4rem 1.1rem .1rem;line-height:1.4}
+.detail h3{font-family:var(--mincho);font-weight:800;font-size:1.8rem;line-height:1.1;margin:.9rem 1.1rem .1rem}
+.detail .where{margin:0 1.1rem .8rem;color:var(--ink-soft)}
+dl{display:grid;grid-template-columns:auto 1fr;gap:.3rem 1rem;margin:0 1.1rem 1rem;font-size:.9rem}
+dt{color:var(--ink-soft)}
+dd{margin:0;font-weight:500;font-variant-numeric:tabular-nums}
+.summary{margin:0 1.1rem 1rem;font-size:.92rem;line-height:1.6}
+.links{margin:0 1.1rem;display:flex;flex-direction:column;gap:.35rem;font-size:.92rem}
+.links a{color:var(--shu);font-weight:500;text-underline-offset:3px}
+
+@media (max-width:760px){
+  main{flex-direction:column}
+  #guide{width:100%;height:58%;border-left:0;border-top:1px solid var(--rule);overflow:auto;display:block}
+  #gBody{overflow:visible}
+  #guide h2{font-size:1.2rem;margin-bottom:.4rem}
+  .stats .hide-s{display:none} .word{display:none} #hint{display:none}
+  .maps{grid-template-columns:1fr} .kanji{padding:1rem .6rem 1rem .8rem}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="seal" aria-hidden="true"><span>火</span><span>山</span></div>
+    <div class="word">Kazan</div>
+    <nav aria-label="Mode">
+      <button type="button" id="tabQuiz" aria-pressed="true">Quiz</button>
+      <button type="button" id="tabGuide" aria-pressed="false">Field guide</button>
+    </nav>
+    <div class="stats" id="stats">
+      <div class="hide-s">Map<b id="sMap">—</b></div>
+      <div>Round<b id="sRound">—</b></div>
+      <div>Score<b id="sScore">0</b></div>
+    </div>
+  </header>
+  <div id="timer"><div id="timerFill"></div></div>
+  <main>
+    <div id="stage">
+      <svg id="map" role="img" aria-label="World map of volcanoes"></svg>
+      <div id="prompt" hidden>
+        <div class="q" id="pQ">Where is this volcano?</div>
+        <div id="pName"></div>
+        <div id="pWhere"></div>
+        <div id="result" aria-live="polite"></div>
+        <div id="fact"></div>
+      </div>
+      <div id="hint" hidden>Space or Enter skips to the next volcano</div>
+
+      <section class="screen" id="startScreen">
+        <div class="card">
+          <div class="kanji" aria-hidden="true"><span>火</span><span>山</span></div>
+          <div class="cardBody">
+            <h1>Kazan</h1>
+            <div class="sub">Kazan (火山) is Japanese for volcano: fire mountain.</div>
+            <p>You'll get ten volcanoes, one at a time, on a blank map. Click where you think each one is. Closer, faster guesses score more, up to 1,000 points each.</p>
+            <div class="maps" id="mapButtons"></div>
+            <p class="credits" style="margin-top:1rem">Want to learn first? <button type="button" class="textlink" id="toGuide">Open the field guide</button> to browse 1,215 volcanoes by continent and country.</p>
+            <p class="credits" id="credits"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="endScreen" hidden>
+        <div class="card"><div class="cardBody">
+          <div id="endMap" style="color:var(--ink-soft)"></div>
+          <div class="final" id="endScore"></div>
+          <div id="endBest"></div>
+          <table id="endTable"></table>
+          <p class="credits" style="margin:0 0 .4rem">Select a volcano's name to read about it in the field guide.</p>
+          <button type="button" class="btn" id="againBtn">Play this map again</button>
+          <button type="button" class="btn ghost" id="menuBtn">Choose another map</button>
+        </div></div>
+      </section>
+    </div>
+
+    <aside id="guide" hidden aria-label="Field guide">
+      <div class="head">
+        <h2>Field guide</h2>
+        <input class="search" id="search" type="search" placeholder="Search by volcano name" autocomplete="off">
+        <div class="chips" id="chips"></div>
+        <select id="country" aria-label="Country"></select>
+      </div>
+      <div id="gBody"></div>
+    </aside>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script>
+const WORLD=/*WORLD*/{};
+const V=/*VOLCANOES*/[];
+
+/* ---------- settings ---------- */
+const ROUNDS=10, SECONDS=12, REVEAL_MS=3400;
+const MAPS={
+  ring:{title:"Ring of Fire",sub:"The arcs of volcanoes around the Pacific, from Chile to Kamchatka to New Zealand",scale:1200,
+        pool:v=>v.rf, rotate:[167,0]},
+  world:{title:"World",sub:"Any volcano on Earth with a dated eruption, from Iceland to Antarctica",scale:1500,
+        pool:()=>true, rotate:[-10,0]}
+};
+const CONTINENTS=["Africa","Antarctica","Asia","Europe","North America","Oceania","South America","Oceans"];
+const PHOTO=id=>`https://volcano.si.edu/gallery/photos/${id}.jpg`;
+const GVP=id=>`https://volcano.si.edu/volcano.cfm?vn=${id}`;
+const WIKI=v=>`https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(v.n+" volcano")}`;
+
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const fmt=n=>Math.round(n).toLocaleString("en-US");
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const yearText=v=>v.y==null?"No dated eruption":v.y<0?`${fmt(-v.y)} BCE`:String(v.y);
+const elevText=v=>v.el==null?"Unknown":v.el<0?`${fmt(-v.el)} m below sea level`:`${fmt(v.el)} m (${fmt(v.el*3.28084)} ft)`;
+const article=w=>/^[aeiou]/i.test(w)?"an":"a";
+function store(k,val){try{if(val===undefined)return localStorage.getItem(k);localStorage.setItem(k,val)}catch(e){return null}}
+const best=k=>+store("kazan-best-"+k)||0;
+function haversine(a,b){const R=3958.8,r=Math.PI/180,dLa=(b[1]-a[1])*r,dLo=(b[0]-a[0])*r;
+  const h=Math.sin(dLa/2)**2+Math.cos(a[1]*r)*Math.cos(b[1]*r)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.min(1,Math.sqrt(h)));}
+const ll=v=>[v.lon,v.lat];
+const norm=s=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+const BYID=new Map(V.map(v=>[v.id,v]));
+const QUIZ=V.filter(v=>(v.ev==="Eruption Observed"||v.ev==="Eruption Dated")&&v.c!=="Undersea features");
+
+/* ---------- map ---------- */
+const svg=d3.select("#map"), gView=svg.append("g"), gBase=gView.append("g"), gDots=gView.append("g"), gMarks=gView.append("g");
+const countries=topojson.feature(WORLD,WORLD.objects.countries);
+const borders=topojson.mesh(WORLD,WORLD.objects.countries,(a,b)=>a!==b);
+const coast=topojson.mesh(WORLD,WORLD.objects.countries,(a,b)=>a===b);
+let proj, path, zoomK=1, mode="quiz";
+const zoom=d3.zoom().scaleExtent([1,14]).on("zoom",ev=>{gView.attr("transform",ev.transform);zoomK=ev.transform.k;sizeDots()});
+
+function size(){const b=svg.node().getBoundingClientRect();return [b.width,b.height]}
+function fitTo(rotate,target){
+  const [W,H]=size(), pad=Math.min(W,H)*.05, top=mode==="quiz"&&W<700?120:0;
+  proj=d3.geoNaturalEarth1().rotate(rotate).fitExtent([[pad,pad+top],[W-pad,H-pad]],target);
+  path=d3.geoPath(proj);
+}
+function drawBase(){
+  const [W,H]=size(); svg.attr("viewBox",`0 0 ${W} ${H}`); gBase.selectAll("*").remove();
+  gBase.append("path").datum({type:"Sphere"}).attr("class","sphere").attr("d",path);
+  gBase.append("path").datum(d3.geoGraticule10()).attr("class","grat").attr("d",path);
+  gBase.append("path").datum(countries).attr("class","land").attr("d",path);
+  gBase.append("path").datum(coast).attr("class","coast").attr("d",path);
+  gBase.append("path").datum(borders).attr("class","borders").attr("d",path);
+}
+function sizeDots(){
+  gDots.selectAll("circle").attr("r",function(){return (+this.dataset.r||2.6)/zoomK});
+  gMarks.selectAll("circle").attr("r",function(){return (+this.dataset.r||6)/zoomK});
+  gMarks.selectAll("text").attr("font-size",15/zoomK).attr("stroke-width",4/zoomK)
+    .attr("dx",function(){return (+this.dataset.dx||12)/zoomK}).attr("dy",5/zoomK);
+}
+function resetZoom(){ svg.call(zoom.transform,d3.zoomIdentity); zoomK=1; }
+
+/* ---------- quiz ---------- */
+let map=null, deck=[], round=0, score=0, log=[], phase="idle", t0=0, raf=0, revealTimer=0;
+function pickDeck(pool){ // weighted toward volcanoes with long eruption records (the better-known ones)
+  return pool.map(v=>({v,k:Math.random()**(1/Math.sqrt(v.ne+1))})).sort((a,b)=>b.k-a.k).slice(0,ROUNDS).map(o=>o.v);
+}
+function quizView(){
+  const pool=QUIZ.filter(MAPS[map||"world"].pool);
+  const target=map==="ring"?{type:"MultiPoint",coordinates:pool.map(ll)}:{type:"Sphere"};
+  fitTo(MAPS[map||"world"].rotate,target); drawBase(); gDots.selectAll("*").remove();
+}
+function startQuiz(k){
+  setMode("quiz"); map=k; score=0; round=0; log=[];
+  deck=pickDeck(QUIZ.filter(MAPS[k].pool));
+  d3.selectAll("#startScreen,#endScreen").attr("hidden",true); d3.selectAll("#prompt,#hint").attr("hidden",null);
+  $("#sMap").textContent=MAPS[k].title; quizView(); next();
+}
+function next(){
+  clearTimeout(revealTimer); gMarks.selectAll("*").remove();
+  if(round>=deck.length) return finish();
+  const v=deck[round++];
+  $("#sRound").textContent=`${round} / ${deck.length}`; $("#sScore").textContent=fmt(score);
+  const t=v.t.toLowerCase(); $("#pQ").textContent=`Where is this ${t}?`;
+  $("#pName").textContent=v.n; $("#pWhere").textContent=v.c;
+  $("#result").innerHTML="&nbsp;"; $("#fact").textContent="";
+  phase="play"; t0=performance.now(); tick();
+}
+function tick(){
+  const left=Math.max(0,1-(performance.now()-t0)/(SECONDS*1000));
+  $("#timerFill").style.transform=`scaleX(${left})`;
+  if(phase!=="play")return; if(left<=0) return resolve(null); raf=requestAnimationFrame(tick);
+}
+function resolve(guess){
+  cancelAnimationFrame(raf); phase="reveal";
+  const v=deck[round-1], el=Math.min(SECONDS,(performance.now()-t0)/1000);
+  let dist=null,pts=0;
+  if(guess){ dist=haversine(guess,ll(v)); const acc=Math.max(0,1-dist/MAPS[map].scale);
+    pts=Math.round(1000*acc*acc*(.5+.5*(1-el/SECONDS))); }
+  score+=pts; log.push({v,guess,dist,pts}); $("#sScore").textContent=fmt(score);
+  showReveal(log[log.length-1]); revealTimer=setTimeout(next,REVEAL_MS);
+}
+function showReveal(e){
+  gMarks.selectAll("*").remove(); const T=proj(ll(e.v));
+  if(e.guess){ gMarks.append("path").datum({type:"LineString",coordinates:[e.guess,ll(e.v)]}).attr("class","track").attr("d",path);
+    const G=proj(e.guess); if(G) gMarks.append("circle").attr("class","guessDot").attr("cx",G[0]).attr("cy",G[1]).attr("r",6); }
+  if(T){ gMarks.append("circle").attr("class","ring").attr("cx",T[0]).attr("cy",T[1]).attr("data-r",18).attr("r",18);
+    gMarks.append("circle").attr("class","trueDot").attr("cx",T[0]).attr("cy",T[1]).attr("r",6);
+    const W=size()[0], left=T[0]>W-180;
+    gMarks.append("text").attr("class","lbl").attr("x",T[0]).attr("y",T[1]).attr("data-dx",left?-12:12).attr("dx",left?-12:12).attr("dy",5)
+      .attr("text-anchor",left?"end":"start").text(e.v.n); }
+  $("#result").innerHTML=e.guess?`${fmt(e.dist)} miles off &nbsp;<span class="pts">+${fmt(e.pts)}</span>`:`<span class="miss">Out of time</span> &nbsp;+0`;
+  $("#fact").textContent=`Last eruption: ${yearText(e.v)} · ${elevText(e.v)}`;
+}
+function finish(){
+  phase="idle"; gMarks.selectAll("*").remove(); d3.selectAll("#prompt,#hint").attr("hidden",true);
+  const prev=best(map), isBest=score>prev; if(isBest) store("kazan-best-"+map,score);
+  $("#endMap").textContent=`${MAPS[map].title}: final score`; $("#endScore").textContent=fmt(score);
+  $("#endBest").innerHTML=isBest?`<span class="new">New best on this map</span>${prev?` (previous ${fmt(prev)})`:""}`:`Your best here is ${fmt(prev)}`;
+  $("#endTable").innerHTML=log.map(e=>`<tr><td><button type="button" class="textlink" data-id="${e.v.id}">${esc(e.v.n)}</button><br><small style="color:var(--ink-soft)">${esc(e.v.c)}</small></td><td>${e.guess?fmt(e.dist)+" mi":"no guess"}</td><td>${fmt(e.pts)}</td></tr>`).join("");
+  $("#endScreen").hidden=false; $("#againBtn").focus({preventScroll:true}); $("#endScreen .card").scrollTop=0;
+}
+function quizMenu(){
+  setMode("quiz"); phase="idle"; clearTimeout(revealTimer); cancelAnimationFrame(raf);
+  gMarks.selectAll("*").remove(); d3.selectAll("#endScreen,#prompt,#hint").attr("hidden",true);
+  $("#sRound").textContent="—"; $("#sScore").textContent="0"; $("#sMap").textContent="—"; $("#timerFill").style.transform="scaleX(1)";
+  map=null; quizView();
+  $("#mapButtons").innerHTML=Object.entries(MAPS).map(([k,m])=>{const b=best(k),n=QUIZ.filter(m.pool).length;
+    return `<button type="button" class="mapbtn" data-map="${k}"><span class="t">${m.title}</span><span class="s">${m.sub}. ${fmt(n)} volcanoes.${b?`<br>Best: ${fmt(b)}`:""}</span></button>`}).join("");
+  $("#startScreen").hidden=false;
+}
+
+/* ---------- field guide ---------- */
+let gCont=null, gCountry="", gSel=null;
+function inScope(v){ return (!gCont||v.ct===gCont)&&(!gCountry||v.cs.includes(gCountry)); }
+function scopeList(){ return V.filter(inScope).sort((a,b)=>(b.y??-1e5)-(a.y??-1e5)||a.n.localeCompare(b.n)); }
+function centerLon(list){ let x=0,y=0; for(const v of list){x+=Math.cos(v.lon*Math.PI/180);y+=Math.sin(v.lon*Math.PI/180)} return Math.atan2(y,x)*180/Math.PI; }
+function guideView(focus){
+  const list=focus||scopeList();
+  if(!gCont&&!gCountry&&!focus) fitTo([-10,0],{type:"Sphere"});
+  else { const r=list.length===1?6:2.2;
+    fitTo([-centerLon(list),0],{type:"FeatureCollection",features:list.map(v=>({type:"Feature",geometry:d3.geoCircle().center(ll(v)).radius(r)()}))}); }
+  drawBase(); resetZoom(); drawDots();
+}
+function drawDots(){
+  gDots.selectAll("*").remove();
+  const sel=gSel?.id;
+  gDots.selectAll("circle").data(V.slice().sort((a,b)=>inScope(a)-inScope(b))).join("circle")
+    .attr("class",v=>"vdot"+(inScope(v)?" on":"")+(v.id===sel?" sel":""))
+    .attr("data-r",v=>v.id===sel?6:inScope(v)?3.4:2.2)
+    .attr("cx",v=>proj(ll(v))?.[0]??-99).attr("cy",v=>proj(ll(v))?.[1]??-99)
+    .on("click",(ev,v)=>{ev.stopPropagation();openVolcano(v.id,false)})
+    .append("title").text(v=>`${v.n}, ${v.c}`);
+  gDots.select(".sel").raise(); sizeDots();
+}
+function renderChips(){
+  $("#chips").innerHTML=CONTINENTS.map(c=>`<button type="button" class="chip" aria-pressed="${c===gCont}" data-c="${c}">${c==="Oceans"?"Ocean floor & islands":c}</button>`).join("");
+  const cs=new Map(); for(const v of V) if(!gCont||v.ct===gCont) for(const c of v.cs) cs.set(c,(cs.get(c)||0)+1);
+  const opts=[...cs].sort((a,b)=>a[0].localeCompare(b[0]));
+  $("#country").innerHTML=`<option value="">${gCont?`All countries in ${gCont==="Oceans"?"this group":gCont}`:"All countries"}</option>`+
+    opts.map(([c,n])=>`<option value="${esc(c)}"${c===gCountry?" selected":""}>${esc(c)} (${n})</option>`).join("");
+}
+function renderList(){
+  gSel=null; const q=$("#search").value.trim().toLowerCase();
+  let list, label;
+  if(q){ list=V.filter(v=>norm(v.n).includes(norm(q))).slice(0,200); label=`${list.length} match${list.length===1?"":"es"} for “${esc(q)}”`; }
+  else if(!gCont&&!gCountry){ $("#gBody").innerHTML=`<div class="empty"><p>The Smithsonian's Global Volcanism Program tracks ${fmt(V.length)} volcanoes that have erupted, or show signs of activity, in the last 12,000 years.</p><p>Pick a continent above, choose a country, or search by name. You can also click any red dot on the map.</p></div>`; drawDots(); return; }
+  else { list=scopeList(); label=`${fmt(list.length)} volcanoes${gCountry?` in ${esc(gCountry)}`:gCont?` in ${esc(gCont==="Oceans"?"the ocean floor and remote islands":gCont)}`:""}, most recently active first`; }
+  $("#gBody").innerHTML=`<div class="count">${label}</div>`+list.map(v=>`<button type="button" class="row" data-id="${v.id}"><span class="nm">${esc(v.n)}${v.rf?'<span class="tag">Ring of Fire</span>':""}<small>${esc(v.t)} · ${esc(v.c)}</small></span><span class="yr">${yearText(v)}</span></button>`).join("");
+  $("#gBody").scrollTop=0; if(q) guideView(list.length?list:V); else drawDots();
+}
+function openVolcano(id,refit=true){
+  const v=BYID.get(id); if(!v) return; setMode("guide"); gSel=v;
+  const backTo=gCountry||gCont;
+  const vei=v.vei==null?"Not recorded":`VEI ${v.vei} of 8`;
+  $("#gBody").innerHTML=`<div class="detail">
+    <div class="back"><button type="button" class="textlink" id="back">${backTo?`Back to ${esc(backTo==="Oceans"?"ocean floor & islands":backTo)}`:"Back to the list"}</button></div>
+    ${v.ph?`<figure><img src="${PHOTO(v.ph)}" alt="${esc(v.pc||v.n)}" loading="lazy" onerror="this.closest('figure').hidden=true"><figcaption>${esc(v.pc)} ${esc(v.pr)}</figcaption></figure>`:""}
+    <h3>${esc(v.n)}</h3>
+    <div class="where">${esc(v.c)}${v.rf?'<span class="tag">Ring of Fire</span>':""}</div>
+    <dl>
+      <dt>Type</dt><dd>${esc(v.t)}</dd>
+      <dt>Last eruption</dt><dd>${yearText(v)}</dd>
+      <dt>Summit</dt><dd>${elevText(v)}</dd>
+      <dt>Recorded eruptions</dt><dd>${v.ne?fmt(v.ne):"None dated"}</dd>
+      <dt title="Volcanic Explosivity Index: 0 is gentle lava, 8 is a supervolcano">Largest eruption</dt><dd>${vei}</dd>
+      <dt>Setting</dt><dd>${esc(v.sr)}</dd>
+      <dt>Location</dt><dd>${Math.abs(v.lat).toFixed(2)}°${v.lat>=0?"N":"S"}, ${Math.abs(v.lon).toFixed(2)}°${v.lon>=0?"E":"W"}</dd>
+    </dl>
+    <p class="summary">${esc(v.s)}</p>
+    <div class="links">
+      <a href="${GVP(v.id)}" target="_blank" rel="noopener">Smithsonian Global Volcanism Program page</a>
+      <a href="${WIKI(v)}" target="_blank" rel="noopener">Search Wikipedia</a>
+    </div></div>`;
+  $("#gBody").scrollTop=0; $("#guide").scrollTop=0;
+  $("#back").onclick=()=>{ gSel=null; renderList(); guideView(); history.replaceState(null,"",location.pathname+location.search); };
+  if(refit) guideView([v]); else drawDots();
+  history.replaceState(null,"",`#v=${v.id}`);
+}
+function guideMenu(){ setMode("guide"); renderChips(); renderList(); guideView(); }
+
+/* ---------- modes ---------- */
+function setMode(m){
+  if(m===mode) return; mode=m;
+  $("#tabQuiz").setAttribute("aria-pressed",m==="quiz"); $("#tabGuide").setAttribute("aria-pressed",m==="guide");
+  $("#guide").hidden=m!=="guide"; $("#stats").style.visibility=m==="quiz"?"visible":"hidden"; $("#timer").style.visibility=m==="quiz"?"visible":"hidden";
+  svg.classed("quiz",m==="quiz"); gDots.selectAll("*").remove(); gMarks.selectAll("*").remove();
+  if(m==="guide"){ phase="idle"; clearTimeout(revealTimer); cancelAnimationFrame(raf); d3.selectAll("#startScreen,#endScreen,#prompt,#hint").attr("hidden",true); svg.call(zoom); }
+  else { svg.on(".zoom",null); resetZoom(); history.replaceState(null,"",location.pathname+location.search); }
+}
+
+/* ---------- events ---------- */
+svg.on("click",ev=>{ if(mode!=="quiz"||phase!=="play")return;
+  const g=proj.invert(d3.pointer(ev,svg.node())); if(!g||!isFinite(g[0])||!isFinite(g[1])||Math.abs(g[1])>90) return;
+  if(!d3.geoContains({type:"Sphere"},g)) return; resolve([((g[0]+540)%360)-180,g[1]]); });
+document.addEventListener("keydown",ev=>{ if(mode==="quiz"&&phase==="reveal"&&(ev.key===" "||ev.key==="Enter")&&ev.target.tagName!=="BUTTON"){ev.preventDefault();next();} });
+$("#mapButtons").onclick=ev=>{const b=ev.target.closest("[data-map]"); if(b) startQuiz(b.dataset.map)};
+$("#againBtn").onclick=()=>startQuiz(map); $("#menuBtn").onclick=quizMenu;
+$("#endTable").onclick=ev=>{const b=ev.target.closest("[data-id]"); if(b){ const v=BYID.get(+b.dataset.id); gCont=v.ct; gCountry=v.cs[0]; setMode("guide"); renderChips(); openVolcano(v.id);} };
+$("#tabQuiz").onclick=()=>{ if(mode!=="quiz") quizMenu(); };
+$("#tabGuide").onclick=()=>{ if(mode!=="guide") guideMenu(); };
+$("#toGuide").onclick=guideMenu;
+$("#chips").onclick=ev=>{const b=ev.target.closest("[data-c]"); if(!b)return; gCont=gCont===b.dataset.c?null:b.dataset.c; gCountry=""; $("#search").value=""; renderChips(); renderList(); guideView();};
+$("#country").onchange=ev=>{ gCountry=ev.target.value; $("#search").value="";
+  if(gCountry&&!gCont){ const v=V.find(v=>v.cs.includes(gCountry)); gCont=v?.ct||null; }
+  renderChips(); renderList(); guideView(); };
+let st; $("#search").oninput=()=>{clearTimeout(st);st=setTimeout(()=>{ if($("#search").value.trim()&&(gCont||gCountry)){gCont=null;gCountry="";renderChips();} renderList(); },160)};
+$("#gBody").onclick=ev=>{const b=ev.target.closest(".row[data-id]"); if(b) openVolcano(+b.dataset.id)};
+$("#brandHome")?.addEventListener("click",quizMenu);
+let rt; window.addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(()=>{
+  if(mode==="guide"){ gSel?guideView([gSel]):guideView(); }
+  else { quizView(); if(phase==="reveal"&&log.length) showReveal(log[log.length-1]); } },150)});
+
+$("#credits").innerHTML=`Volcano data, descriptions and photos: Smithsonian Institution, <a href="https://volcano.si.edu">Global Volcanism Program</a>, Volcanoes of the World (snapshot of May 2026). Photos are credited to their photographers. Map: Natural Earth. Code: MIT License.`;
+
+/* start: a shared link like #v=283030 opens that volcano in the field guide */
+const m=location.hash.match(/v=(\d+)/);
+mode="none";
+if(m&&BYID.has(+m[1])){ const v=BYID.get(+m[1]); gCont=v.ct; gCountry=v.cs[0]; setMode("guide"); renderChips(); openVolcano(v.id); }
+else quizMenu();
+</script>
+</body>
+</html>
